@@ -1,0 +1,26 @@
+version: v1
+managed:
+  enabled: true
+  go_package_prefix:
+    default: github.com/JarrettGuo/protogin/gen
+    except:
+      - buf.build/googleapis/googleapis
+plugins:
+  # 生成 Go 代码
+  - plugin: buf.build/protocolbuffers/go
+    out: gen
+    opt:
+      - paths=source_relative
+
+  # 生成 gRPC 代码
+  - plugin: buf.build/grpc/go
+    out: gen
+    opt:
+      - paths=source_relative
+
+  # 生成 Gin 代码（您的自定义插件）
+  - plugin: gin
+    out: gen
+    opt:
+      - paths=source_relative
+    path: ./cmd/protoc-gen-gin/protoc-gen-gin

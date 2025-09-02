@@ -1,0 +1,134 @@
+syntax = "proto3";
+
+package api.v1;
+
+option go_package = "github.com/JarrettGuo/protogin/gen/api/v1;apiv1";
+
+import "google/api/annotations.proto";
+
+// Demo 服务定义
+service DemoService {
+  // 获取用户信息
+  rpc GetUser(GetUserRequest) returns (GetUserResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/users/{user_id}"
+    };
+  }
+
+  // 创建用户
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/users"
+      body: "*"
+    };
+  }
+
+  // 更新用户信息
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/users/{user_id}"
+      body: "*"
+    };
+  }
+
+  // 删除用户
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/users/{user_id}"
+    };
+  }
+
+  // 获取用户列表
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/users"
+    };
+  }
+
+  // 批量操作示例（多个 HTTP 绑定）
+  rpc BatchOperation(BatchRequest) returns (BatchResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/batch"
+      body: "*"
+      additional_bindings {
+        post: "/api/v1/batch/process"
+        body: "*"
+      }
+    };
+  }
+}
+
+// 请求和响应消息定义
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  string user_id = 1;
+  string name = 2;
+  string email = 3;
+  int32 age = 4;
+}
+
+message CreateUserRequest {
+  string name = 1;
+  string email = 2;
+  int32 age = 3;
+}
+
+message CreateUserResponse {
+  string user_id = 1;
+  string message = 2;
+}
+
+message UpdateUserRequest {
+  string user_id = 1;
+  string name = 2;
+  string email = 3;
+  int32 age = 4;
+}
+
+message UpdateUserResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message DeleteUserRequest {
+  string user_id = 1;
+}
+
+message DeleteUserResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ListUsersRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string sort_by = 3;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message User {
+  string user_id = 1;
+  string name = 2;
+  string email = 3;
+  int32 age = 4;
+}
+
+message BatchRequest {
+  repeated string ids = 1;
+  string operation = 2;
+}
+
+message BatchResponse {
+  bool success = 1;
+  int32 processed = 2;
+  repeated string failed_ids = 3;
+}
