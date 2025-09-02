@@ -1,4 +1,3 @@
-```markdown
 # protoc-gen-gin
 
 将 Protocol Buffers 服务定义转换为 Gin HTTP 处理器的 protoc 插件。
@@ -335,4 +334,3 @@ interceptor := func(ctx context.Context, req interface{}, info *grpc.UnaryServer
 ## License
 
 MIT
-```
