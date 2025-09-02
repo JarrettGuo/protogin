@@ -24,6 +24,7 @@ type method struct {
 	Method       string
 	Body         string
 	ResponseBody string
+	JSONPkg      string
 }
 
 func (m *method) HandlerName() string {
@@ -69,8 +70,12 @@ type service struct {
 	MethodSet map[string]*method
 
 	// 添加包引用
-	GinPkg  string // 用于模板中的 gin 包引用
-	HTTPPkg string // 用于模板中的 http 包引用
+	GinPkg    string // 用于模板中的 gin 包引用
+	HTTPPkg   string // 用于模板中的 http 包引用
+	CodesPkg  string // 用于模板中的 codes 包引用
+	StatusPkg string // 用于模板中的 status 包引用
+	JSONPkg   string // 用于模板中的 json 包引用
+
 }
 
 func (s *service) execute() string {
@@ -104,99 +109,18 @@ func (s *service) ServiceName() string {
 	return s.Name + "Server"
 }
 
-// ProtoFieldName 将下划线分隔的字符串转换为 protobuf 生成的字段名
-// 例如: user_id -> UserId (不是 UserID)
 func ProtoFieldName(str string) string {
 	if str == "" {
 		return ""
 	}
 
-	// 替换连字符为下划线
 	str = strings.ReplaceAll(str, "-", "_")
-
-	// 分割并转换
 	parts := strings.Split(str, "_")
 	for i, part := range parts {
 		if len(part) > 0 {
-			// protobuf 只将每个部分的首字母大写，不做特殊处理
 			parts[i] = strings.ToUpper(part[:1]) + strings.ToLower(part[1:])
 		}
 	}
 
 	return strings.Join(parts, "")
-}
-
-// GoCamelCase 保留原来的函数，以防其他地方需要
-func GoCamelCase(str string) string {
-	if str == "" {
-		return ""
-	}
-
-	// 替换连字符为下划线
-	str = strings.ReplaceAll(str, "-", "_")
-
-	// 分割并转换
-	parts := strings.Split(str, "_")
-	for i, part := range parts {
-		if len(part) > 0 {
-			// 特殊处理常见缩写
-			upperPart := strings.ToUpper(part)
-			if upperPart == "ID" || upperPart == "URL" || upperPart == "API" || upperPart == "HTTP" || upperPart == "HTTPS" {
-				parts[i] = upperPart
-			} else {
-				// 首字母大写，其余小写
-				parts[i] = strings.ToUpper(part[:1]) + strings.ToLower(part[1:])
-			}
-		}
-	}
-
-	return strings.Join(parts, "")
-}
-
-// 原来的辅助函数
-func isASCIILower(c byte) bool {
-	return 'a' <= c && c <= 'z'
-}
-
-func isASCIIDigit(c byte) bool {
-	return '0' <= c && c <= '9'
-}
-
-// GoCamelCaseProto - protobuf 风格的驼峰命名转换（备用）
-func GoCamelCaseProto(str string) string {
-	// Invariant: if the next letter is lower case, it must be converted
-	// to upper case.
-	// That is, we process a word at a time, where words are marked by _ or
-	// upper case letter. Digits are treated as words.
-	var b []byte
-	for i := 0; i < len(str); i++ {
-		c := str[i]
-		switch {
-		case c == '.' && i+1 < len(str) && isASCIILower(str[i+1]):
-			// Skip over '.' in ".{{lowercase}}".
-		case c == '.':
-			b = append(b, '_') // convert '.' to '_'
-		case c == '_' && (i == 0 || str[i-1] == '.'):
-			// Convert initial '_' to ensure we start with a capital letter.
-			// Do the same for '_' after '.' to match historic behavior.
-			b = append(b, 'X') // convert '_' to 'X'
-		case c == '_' && i+1 < len(str) && isASCIILower(str[i+1]):
-			// Skip over '_' in "_{{lowercase}}".
-		case isASCIIDigit(c):
-			b = append(b, c)
-		default:
-			// Assume we have a letter now - if not, it's a bogus identifier.
-			// The next word is a sequence of characters that must start upper case.
-			if isASCIILower(c) {
-				c -= 'a' - 'A' // convert lowercase to uppercase
-			}
-			b = append(b, c)
-
-			// Accept lower case sequence that follows.
-			for ; i+1 < len(str) && isASCIILower(str[i+1]); i++ {
-				b = append(b, str[i+1])
-			}
-		}
-	}
-	return string(b)
 }
