@@ -3,20 +3,134 @@
 package apiv1
 
 import (
+	json "encoding/json"
 	gin "github.com/gin-gonic/gin"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 	http "net/http"
 )
 
-type DemoServiceHTTPServer struct {
-	server DemoServiceServer
-	router gin.IRouter
+// BizError 业务错误接口（用于单体应用）
+type BizError interface {
+	error
+	GetCode() string
+	GetStatus() int
 }
 
-func RegisterDemoServiceServerHTTPServer(srv DemoServiceServer, r gin.IRouter) {
-	s := DemoServiceHTTPServer{
-		server: srv,
-		router: r,
+// ErrorHandler 定义错误处理器类型
+type ErrorHandler func(c *gin.Context, err error)
+
+// HTTPServerOption 定义服务器选项
+type HTTPServerOption func(*DemoServiceHTTPServer)
+
+// DemoServiceHTTPServer HTTP服务器结构
+type DemoServiceHTTPServer struct {
+	server       DemoServiceServer
+	router       gin.IRouter
+	errorHandler ErrorHandler
+}
+
+// DefaultErrorHandler 默认错误处理器（支持单体和分布式）
+func DefaultErrorHandler(c *gin.Context, err error) {
+	if err == nil {
+		return
 	}
+
+	// 1. 优先检查是否是业务错误（单体应用场景）
+	if bizErr, ok := err.(BizError); ok {
+		c.JSON(bizErr.GetStatus(), gin.H{
+			"code":    bizErr.GetCode(),
+			"message": bizErr.Error(),
+			"success": false,
+		})
+		return
+	}
+
+	// 2. 检查是否是 gRPC 错误（分布式场景）
+	if s, ok := status.FromError(err); ok {
+		httpStatus := grpcCodeToHTTP(s.Code())
+		c.JSON(httpStatus, gin.H{
+			"code":    s.Code().String(),
+			"message": s.Message(),
+			"success": false,
+		})
+		return
+	}
+
+	// 3. 参数绑定错误
+	if _, ok := err.(*json.UnmarshalTypeError); ok {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    "INVALID_JSON",
+			"message": "请求格式错误",
+			"success": false,
+		})
+		return
+	}
+
+	// 4. 默认错误处理
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"code":    "INTERNAL_ERROR",
+		"message": err.Error(),
+		"success": false,
+	})
+}
+
+// grpcCodeToHTTP 将 gRPC 状态码转换为 HTTP 状态码
+func grpcCodeToHTTP(code codes.Code) int {
+	switch code {
+	case codes.OK:
+		return http.StatusOK
+	case codes.InvalidArgument:
+		return http.StatusBadRequest
+	case codes.NotFound:
+		return http.StatusNotFound
+	case codes.AlreadyExists:
+		return http.StatusConflict
+	case codes.PermissionDenied:
+		return http.StatusForbidden
+	case codes.Unauthenticated:
+		return http.StatusUnauthorized
+	case codes.ResourceExhausted:
+		return http.StatusTooManyRequests
+	case codes.FailedPrecondition, codes.OutOfRange:
+		return http.StatusBadRequest
+	case codes.Unimplemented:
+		return http.StatusNotImplemented
+	case codes.Unavailable:
+		return http.StatusServiceUnavailable
+	case codes.DeadlineExceeded:
+		return http.StatusGatewayTimeout
+	case codes.Canceled:
+		return 499 // Client Closed Request
+	case codes.Unknown, codes.Internal, codes.DataLoss:
+		return http.StatusInternalServerError
+	case codes.Aborted:
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// WithErrorHandler 设置自定义错误处理器
+func WithErrorHandler(h ErrorHandler) HTTPServerOption {
+	return func(s *DemoServiceHTTPServer) {
+		s.errorHandler = h
+	}
+}
+
+// RegisterDemoServiceServerHTTPServer 注册HTTP服务器
+func RegisterDemoServiceServerHTTPServer(srv DemoServiceServer, r gin.IRouter, opts ...HTTPServerOption) {
+	s := DemoServiceHTTPServer{
+		server:       srv,
+		router:       r,
+		errorHandler: DefaultErrorHandler,
+	}
+
+	// 应用选项
+	for _, opt := range opts {
+		opt(&s)
+	}
+
 	s.RegisterService()
 }
 
@@ -24,7 +138,7 @@ func (s *DemoServiceHTTPServer) GetUser_0(c *gin.Context) {
 	var in GetUserRequest
 
 	if err := c.ShouldBindQuery(&in); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
@@ -33,36 +147,46 @@ func (s *DemoServiceHTTPServer) GetUser_0(c *gin.Context) {
 	ctx := c.Request.Context()
 	out, err := s.server.GetUser(ctx, &in)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, out)
+	c.JSON(http.StatusOK, gin.H{
+		"code":    "SUCCESS",
+		"message": "ok",
+		"data":    out,
+		"success": true,
+	})
 }
 
 func (s *DemoServiceHTTPServer) CreateUser_0(c *gin.Context) {
 	var in CreateUserRequest
 
 	if err := c.ShouldBindJSON(&in); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
 	ctx := c.Request.Context()
 	out, err := s.server.CreateUser(ctx, &in)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, out)
+	c.JSON(http.StatusOK, gin.H{
+		"code":    "SUCCESS",
+		"message": "ok",
+		"data":    out,
+		"success": true,
+	})
 }
 
 func (s *DemoServiceHTTPServer) UpdateUser_0(c *gin.Context) {
 	var in UpdateUserRequest
 
 	if err := c.ShouldBindJSON(&in); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
@@ -71,18 +195,23 @@ func (s *DemoServiceHTTPServer) UpdateUser_0(c *gin.Context) {
 	ctx := c.Request.Context()
 	out, err := s.server.UpdateUser(ctx, &in)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, out)
+	c.JSON(http.StatusOK, gin.H{
+		"code":    "SUCCESS",
+		"message": "ok",
+		"data":    out,
+		"success": true,
+	})
 }
 
 func (s *DemoServiceHTTPServer) DeleteUser_0(c *gin.Context) {
 	var in DeleteUserRequest
 
 	if err := c.ShouldBindQuery(&in); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
@@ -91,47 +220,62 @@ func (s *DemoServiceHTTPServer) DeleteUser_0(c *gin.Context) {
 	ctx := c.Request.Context()
 	out, err := s.server.DeleteUser(ctx, &in)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, out)
+	c.JSON(http.StatusOK, gin.H{
+		"code":    "SUCCESS",
+		"message": "ok",
+		"data":    out,
+		"success": true,
+	})
 }
 
 func (s *DemoServiceHTTPServer) ListUsers_0(c *gin.Context) {
 	var in ListUsersRequest
 
 	if err := c.ShouldBindQuery(&in); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
 	ctx := c.Request.Context()
 	out, err := s.server.ListUsers(ctx, &in)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, out)
+	c.JSON(http.StatusOK, gin.H{
+		"code":    "SUCCESS",
+		"message": "ok",
+		"data":    out,
+		"success": true,
+	})
 }
 
 func (s *DemoServiceHTTPServer) BatchOperation_0(c *gin.Context) {
 	var in BatchRequest
 
 	if err := c.ShouldBindJSON(&in); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
 	ctx := c.Request.Context()
 	out, err := s.server.BatchOperation(ctx, &in)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		s.errorHandler(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, out)
+	c.JSON(http.StatusOK, gin.H{
+		"code":    "SUCCESS",
+		"message": "ok",
+		"data":    out,
+		"success": true,
+	})
 }
 
 func (s *DemoServiceHTTPServer) RegisterService() {
